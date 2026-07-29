@@ -13,7 +13,6 @@
 # limitations under the License.
 
 """Library for building prompts."""
-
 from __future__ import annotations
 
 import dataclasses

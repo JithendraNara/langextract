@@ -13,7 +13,6 @@
 # limitations under the License.
 
 """Progress and visualization utilities for LangExtract."""
-
 from __future__ import annotations
 
 from typing import Any

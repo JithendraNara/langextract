@@ -22,15 +22,12 @@ in one place to avoid duplication.
 GEMINI_PATTERNS = (r'^gemini',)
 GEMINI_PRIORITY = 10
 
-# OpenAI provider patterns (includes MiniMax via OpenAI-compatible API)
+# OpenAI provider patterns
 OPENAI_PATTERNS = (
     r'^gpt-4',
     r'^gpt4\.',
     r'^gpt-5',
     r'^gpt5\.',
-    # MiniMax models (OpenAI-compatible API)
-    r'^MiniMax',
-    r'^minimax',
 )
 OPENAI_PRIORITY = 10
 
@@ -66,9 +63,14 @@ OLLAMA_PATTERNS = (
 )
 OLLAMA_PRIORITY = 10
 
-# MiniMax provider patterns (OpenAI-compatible API)
+# MiniMax provider patterns. Although MiniMax speaks the OpenAI-compatible
+# chat completions protocol, we ship a dedicated provider so that users get
+# MiniMax-specific defaults (base_url, model_id) and so that factory routing
+# resolves ``MiniMax-*`` model IDs unambiguously. ``MINIMAX_PRIORITY`` must
+# stay strictly above ``OPENAI_PRIORITY`` so that ``MiniMax-*`` model IDs
+# resolve to the MiniMax provider instead of falling through to OpenAI.
 MINIMAX_PATTERNS = (
     r'^MiniMax',
     r'^minimax',
 )
-MINIMAX_PRIORITY = 10
+MINIMAX_PRIORITY = OPENAI_PRIORITY + 5

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 """Integration tests for Ollama functionality."""
-
 import socket
 
 import pytest

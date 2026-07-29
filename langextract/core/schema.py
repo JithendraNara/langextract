@@ -13,7 +13,6 @@
 # limitations under the License.
 
 """Core schema abstractions for LangExtract."""
-
 from __future__ import annotations
 
 import abc

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 """Library for data conversion between AnnotatedDocument and JSON."""
-
 from __future__ import annotations
 
 import dataclasses

@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Provider-specific schema implementations."""
-from __future__ import annotations
+"""Provider-specific tests.
 
-from langextract.providers.schemas import gemini
-
-GeminiSchema = gemini.GeminiSchema  # Backward compat
-
-__all__ = ["GeminiSchema"]
+These tests exercise individual providers in isolation, without going through
+the full ``lx.extract`` pipeline. They use ``unittest.mock`` to stub network
+I/O so the suite runs offline and deterministically.
+"""
