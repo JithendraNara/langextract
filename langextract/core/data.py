@@ -13,7 +13,6 @@
 # limitations under the License.
 
 """Classes used to represent core data types of annotation pipeline."""
-
 from __future__ import annotations
 
 import dataclasses

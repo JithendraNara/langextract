@@ -13,7 +13,6 @@
 # limitations under the License.
 
 """Supports Input and Output Operations for Data Annotations."""
-
 from __future__ import annotations
 
 import abc

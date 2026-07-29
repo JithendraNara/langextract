@@ -14,40 +14,48 @@
 
 """MiniMax provider for LangExtract.
 
-This provider uses MiniMax's OpenAI-compatible API to extract structured
-information from text.
+MiniMax exposes an OpenAI-compatible chat completions API, so this provider
+is a thin subclass of :class:`OpenAILanguageModel` that pre-populates the
+MiniMax default ``base_url`` and ``model_id``. All inference semantics
+(prompt formatting, fence handling, ``response_format`` routing, parallel
+batching, ``merge_kwargs``) are inherited unchanged from the OpenAI
+provider, which keeps LangExtract's structured-output contract intact.
 
-Usage:
-    # Using factory
-    from langextract.factory import ModelConfig, create_model
+Usage::
 
-    config = ModelConfig(
+    import langextract as lx
+    from langextract.providers.minimax import MiniMaxLanguageModel
+
+    model = MiniMaxLanguageModel(
         model_id="MiniMax-M2.5",
-        provider="MiniMaxLanguageModel",
-        provider_kwargs={
-            "api_key": "your-minimax-api-key"
-        }
+        api_key="<MINIMAX_API_KEY>",
     )
-    model = create_model(config)
-
     result = lx.extract(
         text_or_documents=text,
         prompt_description=instructions,
-        model=model
+        model=model,
     )
+
+Or via the factory by selecting the provider explicitly::
+
+    from langextract import factory
+
+    config = factory.ModelConfig(
+        model_id="MiniMax-M2.5",
+        provider="MiniMaxLanguageModel",
+        provider_kwargs={"api_key": "<MINIMAX_API_KEY>"},
+    )
+    model = factory.create_model(config)
 """
 
 from __future__ import annotations
 
-import dataclasses
-from typing import Any
-
-from langextract.core import base_model
-from langextract.core import data
+from langextract.providers import openai
 from langextract.providers import patterns
 from langextract.providers import router
 
-_DEFAULT_MODEL_ID = "MiniMax-M2.5"
+# MiniMax's public OpenAI-compatible endpoint. Callers may override ``base_url``
+# (e.g. for staging or self-hosted gateways) via ``provider_kwargs``.
 _DEFAULT_BASE_URL = "https://api.minimax.io/v1"
 
 
@@ -55,174 +63,53 @@ _DEFAULT_BASE_URL = "https://api.minimax.io/v1"
     *patterns.MINIMAX_PATTERNS,
     priority=patterns.MINIMAX_PRIORITY,
 )
-@dataclasses.dataclass(init=False)
-class MiniMaxLanguageModel(base_model.BaseLanguageModel):
-  """Language model inference using MiniMax's OpenAI-compatible API."""
+class MiniMaxLanguageModel(openai.OpenAILanguageModel):
+  """Language model inference using MiniMax's OpenAI-compatible API.
 
-  model_id: str = _DEFAULT_MODEL_ID
-  api_key: str | None = None
-  base_url: str = _DEFAULT_BASE_URL
-  organization: str | None = None
-  format_type: data.FormatType = data.FormatType.JSON
-  temperature: float | None = None
-  max_workers: int = 10
-  _client: Any = dataclasses.field(default=None, repr=False, compare=False)
-  _extra_kwargs: dict[str, Any] = dataclasses.field(
-      default_factory=dict, repr=False, compare=False
-  )
+  Inherits all inference behaviour from :class:`OpenAILanguageModel`; only
+  the default ``model_id`` and ``base_url`` are MiniMax-specific.
+  """
 
-  @property
-  def requires_fence_output(self) -> bool:
-    """MiniMax returns raw JSON without fences."""
-    if self.format_type == data.FormatType.JSON:
-      return False
-    return super().requires_fence_output
+  DEFAULT_MODEL_ID = "MiniMax-M2.5"
+  DEFAULT_BASE_URL = _DEFAULT_BASE_URL
 
-  def __post_init__(self):
-    """Initialize the OpenAI client with MiniMax configuration."""
-    try:
-      from openai import AsyncOpenAI
-    except ImportError as e:
-      raise ImportError(
-          "OpenAI package is required for MiniMax provider. "
-          "Install with: pip install langextract[openai]"
-      ) from e
-
-    if self._client is None:
-      self._client = AsyncOpenAI(
-          api_key=self.api_key,
-          base_url=self.base_url,
-          organization=self.organization,
-          **self._extra_kwargs,
-      )
-
-  async def _generate(
+  def __init__(  # pylint: disable=too-many-arguments
       self,
-      texts: list[str],
-      prompt_description: str,
-      extra_params: dict[str, Any] | None = None,
-  ) -> list[list[base_model.ExtractionCandidate]]:
-    """Generate extractions for the given texts."""
-    import asyncio
+      model_id: str = DEFAULT_MODEL_ID,
+      api_key: str | None = None,
+      base_url: str | None = DEFAULT_BASE_URL,
+      organization: str | None = None,
+      format_type=None,
+      temperature: float | None = None,
+      max_workers: int = 10,
+      **kwargs,
+  ) -> None:
+    """Initialize the MiniMax language model.
 
-    extra_params = extra_params or {}
+    Args:
+      model_id: MiniMax model identifier (e.g. ``"MiniMax-M2.5"``).
+      api_key: MiniMax API key. Required, matching the OpenAI provider.
+      base_url: MiniMax OpenAI-compatible endpoint. Defaults to the
+        public ``https://api.minimax.io/v1`` URL.
+      organization: Unused by MiniMax; accepted for API parity.
+      format_type: Output format (``FormatType.JSON`` or
+        ``FormatType.YAML``). Defaults to JSON to match OpenAI.
+      temperature: Sampling temperature.
+      max_workers: Maximum parallel chat-completion requests.
+      **kwargs: Forwarded to ``OpenAILanguageModel`` for parity.
+    """
+    if format_type is None:
+      from langextract.core import data  # pylint: disable=import-outside-toplevel
 
-    async def process_single(text: str) -> list[base_model.ExtractionCandidate]:
-      response = await self._client.chat.completions.create(
-          model=self.model_id,
-          messages=[
-              {
-                  "role": "system",
-                  "content": (
-                      "You are a helpful assistant that extracts structured"
-                      " information from text."
-                  ),
-              },
-              {
-                  "role": "user",
-                  "content": f"{prompt_description}\n\nText: {text}",
-              },
-          ],
-          response_format={"type": "json_object"}
-          if self.format_type == data.FormatType.JSON
-          else None,
-          temperature=self.temperature,
-          **extra_params,
-      )
+      format_type = data.FormatType.JSON
 
-      content = response.choices[0].message.content
-      if not content:
-        return []
-
-      try:
-        import json
-
-        data = json.loads(content)
-        # Wrap in ExtractionCandidate format
-        if isinstance(data, list):
-          return [
-              base_model.ExtractionCandidate(
-                  extraction_text=item.get("text", str(item)),
-                  extraction_class=item.get("class", "unknown"),
-                  extraction_index=i,
-              )
-              for i, item in enumerate(data)
-          ]
-        elif isinstance(data, dict):
-          # For single object extractions
-          return [
-              base_model.ExtractionCandidate(
-                  extraction_text=str(v),
-                  extraction_class=k,
-                  extraction_index=i,
-              )
-              for i, (k, v) in enumerate(data.items())
-          ]
-      except (json.JSONDecodeError, AttributeError):
-        pass
-
-      return [
-          base_model.ExtractionCandidate(
-              extraction_text=content,
-              extraction_class="extracted",
-              extraction_index=0,
-          )
-      ]
-
-    # Process texts in parallel
-    tasks = [process_single(text) for text in texts]
-    results = await asyncio.gather(*tasks)
-    return results
-
-  def _generate_sync(
-      self,
-      texts: list[str],
-      prompt_description: str,
-      extra_params: dict[str, Any] | None = None,
-  ) -> list[list[base_model.ExtractionCandidate]]:
-    """Synchronous wrapper for generation."""
-    import asyncio
-
-    try:
-      loop = asyncio.get_event_loop()
-      if loop.is_running():
-        # If we're in an async context, we need to create a new loop
-        # This is a simplified sync wrapper - for production use async directly
-        import concurrent.futures
-
-        def run_in_executor():
-          return asyncio.run(
-              self._generate(texts, prompt_description, extra_params)
-          )
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-          future = executor.submit(run_in_executor)
-          return future.result()
-    except RuntimeError:
-      # No event loop, run directly
-      return asyncio.run(
-          self._generate(texts, prompt_description, extra_params)
-      )
-
-  def __call__(
-      self,
-      texts: Sequence[str],
-      prompt_description: str,
-      extra_params: dict[str, Any] | None = None,
-  ) -> list[list[base_model.ExtractionCandidate]]:
-    """Synchronous interface for the model."""
-    return self._generate_sync(list(texts), prompt_description, extra_params)
-
-  async def _call_async(
-      self,
-      texts: Sequence[str],
-      prompt_description: str,
-      extra_params: dict[str, Any] | None = None,
-  ) -> list[list[base_model.ExtractionCandidate]]:
-    """Asynchronous interface for the model."""
-    return await self._generate(list(texts), prompt_description, extra_params)
-
-  def close(self):
-    """Close the client connection."""
-    # AsyncOpenAI doesn't need explicit close
-    pass
+    super().__init__(
+        model_id=model_id,
+        api_key=api_key,
+        base_url=base_url,
+        organization=organization,
+        format_type=format_type,
+        temperature=temperature,
+        max_workers=max_workers,
+        **kwargs,
+    )

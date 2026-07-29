@@ -13,7 +13,6 @@
 # limitations under the License.
 
 """Gemini provider for LangExtract."""
-
 # pylint: disable=duplicate-code
 
 from __future__ import annotations

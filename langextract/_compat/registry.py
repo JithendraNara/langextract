@@ -13,7 +13,6 @@
 # limitations under the License.
 
 """Compatibility shim for langextract.registry imports."""
-
 # pylint: disable=duplicate-code
 
 from __future__ import annotations
